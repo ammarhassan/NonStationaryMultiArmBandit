@@ -42,6 +42,8 @@ class LinUCBStruct:
 		self.deploy_stats = articleAccess()
 		self.theta = np.zeros(d)			# the famous theta
 		self.pta = 0 						# the probability of this article being chosen
+		self.var = 0
+		self.mean = 0
 
 	def reInitilize(self):
 		d = np.shape(self.A)[0]				# as theta is re-initialized some part of the structures are set to zero
@@ -106,7 +108,7 @@ def save_to_file(fileNameWrite, dicts, recordedStats, epochArticles, epochSelect
 		f.write('data') # the observation line starts with data;
 		f.write(',' + str(tim))
 		f.write(',' + ';'.join([str(x) for x in recordedStats]))
-		f.write(',' + ';'.join([str(dicts[x].learn_stats.accesses) + ' ' + str(dicts[x].learn_stats.clicks) + ' ' + str(x) + ' ' + ' '.join(["{:0.4f}".format(y) for y in dicts[x].theta]) for x in epochSelectedArticles]))
+		f.write(',' + ';'.join([str(dicts[x].mean) +' ' + str(dicts[x].var) + ' ' + str(dicts[x].learn_stats.accesses) + ' ' + str(dicts[x].learn_stats.clicks) + ' ' + str(x) + ' ' + ' '.join(["{:0.4f}".format(y) for y in dicts[x].theta]) for x in epochSelectedArticles]))
 		f.write(',' + ';'.join(str(x)+' ' + str(epochArticles[x]) for x in epochArticles))
 		f.write(',' + ';'.join(str(x)+' ' + str(epochSelectedArticles[x]) for x in epochSelectedArticles))
 
@@ -168,9 +170,9 @@ if __name__ == '__main__':
 	mode = 'hours' 									# the selected mode
 	fileSig = '2Hours'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
 	reInitPerDay = 12								# how many times theta is re-initialized per day
+	batchSize = 20000								# size of one batch
 
-
-	d = 5 											# dimension of the input sizes
+	d = 6 											# dimension of the input sizes
 	alpha = 1 										# alpha in LinUCB; see pseudo-code
 	eta = .2 										# parameter in e-greedy algorithm
 	p_learn = 1 									# determined the size of learn and deployment bucket. since its 1; deployment bucked is empty
@@ -221,7 +223,9 @@ if __name__ == '__main__':
 		# put some new data in file for readability
 		with open(fileNameWrite, 'a+') as f:
 			f.write('\nNew Run at  ' + datetime.datetime.now().strftime('%m/%d/%Y %H:%M:%S'))
-			f.write('\n, Time, UCBLearnAccesses; UCBClicks; randomLearnAccesses; randomClicks; greedyLearnAccesses; greedyClicks, Article Access; Clicks; ID; Theta, ID; epochArticles, ID ;epochSelectedArticles \n')
+
+			# format style, '()' means that it is repeated for each article
+			f.write('\n, Time,UCBLearnAccesses;UCBClicks;randomLearnAccesses;randomClicks;greedyLearnAccesses;greedyClicks,(mean var Article_Access Clicks ID Theta),(ID;epochArticles),(ID;epochSelectedArticles)\n')
 
 		print fileName, fileNameWrite, dataDay, resetInterval
 
@@ -259,7 +263,7 @@ if __name__ == '__main__':
 					# featureVector = np.concatenate((user_features[:-1], article[1:-1]), axis = 0)
 
 					# exclude 1 from feature vectors
-					featureVector = user_features[:-1]
+					featureVector = user_features
 					# if there is a problem with the feature vector, skip this observation
 					if len(featureVector) is not d:
 						print 'feature_vector len mismatched'
@@ -281,8 +285,9 @@ if __name__ == '__main__':
 
 					# Calculate LinUCB confidence bound; done in two steps for readability
 					# please check this code for correctness
-					pta = np.dot(articles_LinUCB[article_id].theta, featureVector)
-					articles_LinUCB[article_id].pta = pta + alpha * np.sqrt(np.dot(np.dot(featureVector,articles_LinUCB[article_id].A_inv), featureVector))
+					articles_LinUCB[article_id].mean = np.dot(articles_LinUCB[article_id].theta, featureVector)
+					articles_LinUCB[article_id].var = np.sqrt(np.dot(np.dot(featureVector,articles_LinUCB[article_id].A_inv), featureVector))
+					articles_LinUCB[article_id].pta = articles_LinUCB[article_id].mean + alpha * articles_LinUCB[article_id].var
 
 				if article_chosen not in epochSelectedArticles:
 					epochSelectedArticles[article_chosen] = 1
@@ -338,7 +343,7 @@ if __name__ == '__main__':
 						articles_greedy[article_chosen].deploy_stats.accesses = articles_greedy[article_chosen].deploy_stats.accesses + 1
 					
 				# if the batch has ended 
-				if totalArticles%20000==0:
+				if totalArticles%batchSize==0:
 					# write observations for this batch
 					printWrite()
 					batchStartTime = tim
