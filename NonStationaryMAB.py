@@ -108,9 +108,9 @@ def save_to_file(fileNameWrite, dicts, recordedStats, epochArticles, epochSelect
 		f.write('data') # the observation line starts with data;
 		f.write(',' + str(tim))
 		f.write(',' + ';'.join([str(x) for x in recordedStats]))
-		f.write(',' + ';'.join([str(dicts[x].mean) +' ' + str(dicts[x].var) + ' ' + str(dicts[x].learn_stats.accesses) + ' ' + str(dicts[x].learn_stats.clicks) + ' ' + str(x) + ' ' + ' '.join(["{:0.4f}".format(y) for y in dicts[x].theta]) for x in epochSelectedArticles]))
-		f.write(',' + ';'.join(str(x)+' ' + str(epochArticles[x]) for x in epochArticles))
-		f.write(',' + ';'.join(str(x)+' ' + str(epochSelectedArticles[x]) for x in epochSelectedArticles))
+		f.write(',' + ';'.join(['|'.join(str(article_id) for article_id in variance_of_clusters(5, dicts[article_id].A_inv,bias=False)) + ' ' + str(dicts[article_id].learn_stats.accesses) + ' ' + str(dicts[article_id].learn_stats.clicks) + ' ' + str(article_id) + ' ' + '|'.join(["{:0.4f}".format(y) for y in dicts[article_id].theta]) for article_id in epochSelectedArticles]))
+		f.write(',' + ';'.join(str(article_id)+' ' + str(epochArticles[article_id]) for article_id in epochArticles))
+		f.write(',' + ';'.join(str(article_id)+' ' + str(epochSelectedArticles[article_id]) for article_id in epochSelectedArticles))
 
 		f.write('\n')
 
@@ -121,6 +121,19 @@ def file_len(fname):
             pass
     return i + 1
 
+def variance_of_clusters(numberClusters, A_inv, bias=False):
+	varI = np.zeros(numberClusters)
+	if bias:
+		vector = np.zeros(numberClusters + 1)
+		vector[numberClusters] = 1
+	else:
+		vector = np.zeros(numberClusters)
+
+	for i in range(numberClusters):
+		vectorI = vector
+		vectorI[i] = 1
+		varI[i] = np.sqrt(np.dot(np.dot(vectorI, A_inv), vectorI))
+	return varI
 
 # the first thing that executes in this programme is this main function
 if __name__ == '__main__':
@@ -168,11 +181,11 @@ if __name__ == '__main__':
 
 	modes = {0:'multiple', 1:'single', 2:'hours'} 	# the possible modes that this code can be run in; 'multiple' means multiple days or all days so theta dont change; single means it is reset every day; hours is reset after some hours depending on the reInitPerDay. 
 	mode = 'hours' 									# the selected mode
-	fileSig = '2Hours'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
-	reInitPerDay = 12								# how many times theta is re-initialized per day
-	batchSize = 20000								# size of one batch
+	fileSig = '4hours'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
+	reInitPerDay = 6								# how many times theta is re-initialized per day
+	batchSize = 100000								# size of one batch
 
-	d = 6 											# dimension of the input sizes
+	d = 5 											# dimension of the input sizes
 	alpha = 1 										# alpha in LinUCB; see pseudo-code
 	eta = .2 										# parameter in e-greedy algorithm
 	p_learn = 1 									# determined the size of learn and deployment bucket. since its 1; deployment bucked is empty
@@ -225,7 +238,7 @@ if __name__ == '__main__':
 			f.write('\nNew Run at  ' + datetime.datetime.now().strftime('%m/%d/%Y %H:%M:%S'))
 
 			# format style, '()' means that it is repeated for each article
-			f.write('\n, Time,UCBLearnAccesses;UCBClicks;randomLearnAccesses;randomClicks;greedyLearnAccesses;greedyClicks,(mean var Article_Access Clicks ID Theta),(ID;epochArticles),(ID;epochSelectedArticles)\n')
+			f.write('\n, Time,UCBLearnAccesses;UCBClicks;randomLearnAccesses;randomClicks;greedyLearnAccesses;greedyClicks,(varOfClusterUsers Article_Access Clicks ID Theta),(ID;epochArticles),(ID;epochSelectedArticles)\n')
 
 		print fileName, fileNameWrite, dataDay, resetInterval
 
@@ -263,7 +276,7 @@ if __name__ == '__main__':
 					# featureVector = np.concatenate((user_features[:-1], article[1:-1]), axis = 0)
 
 					# exclude 1 from feature vectors
-					featureVector = user_features
+					featureVector = user_features[:-1]
 					# if there is a problem with the feature vector, skip this observation
 					if len(featureVector) is not d:
 						print 'feature_vector len mismatched'
@@ -283,7 +296,7 @@ if __name__ == '__main__':
 						# we also count the times article appeared in selection pool in this batch
 						epochArticles[article_id] = epochArticles[article_id] + 1
 
-					# Calculate LinUCB confidence bound; done in two steps for readability
+					# Calculate LinUCB confidence bound; done in three steps for readability
 					# please check this code for correctness
 					articles_LinUCB[article_id].mean = np.dot(articles_LinUCB[article_id].theta, featureVector)
 					articles_LinUCB[article_id].var = np.sqrt(np.dot(np.dot(featureVector,articles_LinUCB[article_id].A_inv), featureVector))
@@ -305,7 +318,7 @@ if __name__ == '__main__':
 				greedyArticle = max([(x, articles_greedy[x].learn_stats.CTR) for x in currentArticles], key = itemgetter(1))[0]
 				if random() < eta: greedyArticle = choice(currentArticles)
 
-				learn = random()<p_learn
+				learn = random()<p_learn # decide the learning or deployment bucket
 
 				# if random strategy article Picked by evaluation srategy
 				if randomArticle == article_chosen:
@@ -318,7 +331,7 @@ if __name__ == '__main__':
 
 				# if LinUCB article is the chosen by evaluation strategy; update datastructure with results
 				if ucbArticle==article_chosen:
-					if learn:
+					if learn: # if learning bucket then use the observation to update the parameters
 						articles_LinUCB[article_chosen].learn_stats.clicks = articles_LinUCB[article_chosen].learn_stats.clicks + click
 						articles_LinUCB[article_chosen].learn_stats.accesses = articles_LinUCB[article_chosen].learn_stats.accesses + 1
 

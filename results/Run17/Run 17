@@ -1,0 +1,5 @@
+Run 17:
+Summary of Experiment.
+	Here we test the batch size and its affect on observing results.
+	batchSize = 2000
+	The conclusion is that 2000 is very granular but does not capture any extra details. We can safely have larger batch size like 20000 as done in previous experiments.
