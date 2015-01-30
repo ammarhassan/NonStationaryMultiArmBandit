@@ -128,6 +128,22 @@ def fill_DS(filename, articles, resetCount):
 def summary(articles, variableName):
 	return [(x, articles[x].__dict__[variableName][-1]) for x in articles]
 
+def loadExperiment(indicators, save_address):
+	def indicatorsInFile(filename):
+		for indicator in indicators:
+			if indicator not in filename:
+				return False
+		return True
+	filenames = [x for x in os.listdir(save_address) if indicatorsInFile(x)]
+	articlesDict = {}
+	for fileCount, x in enumerate(filenames):
+		articlesDict = fill_DS(os.path.join(save_address, x),
+		 articlesDict, fileCount)
+	for key in articlesDict:
+		articlesDict[key].done()
+	return articlesDict
+
+
 def produce_means(theta, num_clusters):
 	means = np.zeros(num_clusters)
 
@@ -137,178 +153,212 @@ def produce_means(theta, num_clusters):
 		means[i] = np.dot(theta, featureVector)
 	return means
 
+def plotDiffParameter(articlesLinUCB, articlesDecayLinUCB):
+	keys_ = set(articlesLinUCB.keys()).intersection(articlesDecayLinUCB.keys())
+	diff = [(x, np.linalg.norm(articlesLinUCB[x].theta[-1] - articlesDecayLinUCB[x].theta[-1])) for x in keys_]
+	histogram = hist(zip(*diff)[1])
+	
+
+	return histogram
+
 if __name__ == '__main__':
 	performanceMult = []
 	performanceHr = []
 	parameter = []
 	stats = 0
 	reloads = 0
-	plots_ = True
-	MultipleAnalysis = True
+	plots_ = 0
+	analysistype = "decayLinUCB"
 	print 'reloads', reloads, 'stats', stats
-	for alp in range(1,2):
-		alpha = .6
-		decay = 1 - 1.0/(4**13)
 
-		# alpha = alp * .1
-		if reloads:
-			# filenames =[x for x in os.listdir(save_address) if '.csv' in x and 'alpha='+str(alpha) in x]
-			filenames =[x for x in os.listdir(save_address) if '.csv' in x and 'Decay='+str(decay) in x and 'alpha='+str(alpha) in x]
-			# filenames =[x for x in os.listdir(save_address) if '.csv' in x]
-			if filenames:
-				# dictionaries for three modes of data
-				articlesSingle = {}
-				articlesMultiple = {}
-				articlesHours = {}
-
-				# calculating how many times theta was reset. Theta stays static in a file.
-				countSingle = 1
-				countMultiple = 1
-				countHours = 1
-				for x in filenames:
-					if 'single' in x:
-						articlesSingle = fill_DS(os.path.join(save_address, x), articlesSingle, countSingle)
-						countSingle = countSingle + 1
-
-					elif 'multiple' in x:
-						articlesMultiple = fill_DS(os.path.join(save_address,x), articlesMultiple, countMultiple)
-						# print articlesMultiple[109473].OucbCTR[-1]
-					elif 'hours4' in x or '4hours' in x:
-						articlesHours = fill_DS(os.path.join(save_address,x), articlesHours, countHours)
-						countHours = countHours + 1
-
-				# converting to Numpy arrays
-				for x in articlesSingle:
-					articlesSingle[x].done()
-
-				for x in articlesMultiple:
-					articlesMultiple[x].done()
-
-				for x in articlesHours:
-					articlesHours[x].done()
-
-			# performanceMult.append(articlesMultiple[109530].OucbCTR[-1] / articlesMultiple[109530].OrandCTR[-1])
-			# parameter.append(alp)
-			# performanceHr.append(articlesHours[109530].OucbCTR[-1])
+	if reloads:
+		# for alp in range(1,17):
+		# 	alpha = .3
+		# 	decay = 1 - 1.0/(4**alp)
+		# 	articlesDecayLinUCB = loadExperiment(
+		# 		['.csv', 'multiple', 'Decay='+str(decay), 'alpha='+str(alpha)],
+		# 		os.path.join(save_address,'Run23')
+		# 		)
+		# 	if articlesDecayLinUCB:
+		# 		key1 = articlesDecayLinUCB.keys()[0]
+		# 		performanceMult.append(articlesDecayLinUCB[key1].OucbCTR[-1])
+		# 		parameter.append(alp)
+		# plot(parameter, performanceMult)
+		alpha = .3
+		decay = 1 - 1.0/(4**5)
+		# decay = 7
+		articlesLinUCB = loadExperiment(
+			['.csv', 'multiple', 'alpha='+str(alpha)], 
+			os.path.join(save_address,'Run20')
+			)
+		articlesDecayLinUCB = loadExperiment(
+			['.csv', 'multiple', 'Decay=7', 'alpha=3'],
+			os.path.join(save_address,'Run25')
+			)
 
 			# finding the difference of CTR after and before 
-		if stats:
-			ass = summary(articlesHours, 'ucbCTR')
-			asm = summary(articlesMultiple, 'ucbCTR')
-			diff = [(str(x[0][0]), str(x[1][0]), x[0][1] - x[1][1]) for x in zip(ass, asm)]
-			diff = sorted(diff, key = itemgetter(2))
-			differences = [x[2] for x in diff]
-			print '\n'.join([str(x[0]) + ', ' + str(x[1]) + ', ' + str(x[2]) for x in diff])
-		if plots_ and not MultipleAnalysis:
-			id = 109586
-			objS = articlesSingle[id]
-			objH = articlesHours[id]
-			objC = objH
-			objM = articlesMultiple[id]
+	if articlesDecayLinUCB:
+		gkey = articlesDecayLinUCB.keys()[0]
 
-			# tim = np.array(range(shape(articlesSingle[id][0])[0]))
-			maxClick = objC.ucbc[-1]
-			# calculating batch stats
-			with np.errstate(invalid='ignore'):
-				accessSingleBatches = np.concatenate((np.array([objC.ucba[0]]), objC.ucba[1:] - objC.ucba[:-1]))
-				clickSingleBatches = np.concatenate((np.array([objC.ucbc[0]]), objC.ucbc[1:] - objC.ucbc[:-1]))
-				batchChosenCTR = clickSingleBatches / accessSingleBatches
+	if stats:
+		ass = summary(articlesLinUCB, 'ucbCTR')
+		asm = summary(articlesDecayLinUCB, 'ucbCTR')
+		diff = [(str(x[0][0]), str(x[1][0]), x[0][1] - x[1][1]) for x in zip(ass, asm)]
+		diff = sorted(diff, key = itemgetter(2))
+		differences = [x[2] for x in diff]
+		hist(differences)
+		print '\n'.join([str(x[0]) + ', ' + str(x[1]) + ', ' + str(x[2]) for x in diff])
 
-				accessMultBatches = np.concatenate((np.array([objM.ucba[0]]), objM.ucba[1:] - objM.ucba[:-1]))
-				clickMultBatches = np.concatenate((np.array([objM.ucbc[0]]), objM.ucbc[1:] - objM.ucbc[:-1]))
-				batchMultCTR = clickMultBatches / accessMultBatches
+	
+		# from reset_count find the articles
 
-				accessMultrandBatches = np.concatenate((np.array([objM.Oranda[0]]), objM.Oranda[1:] - objM.Oranda[:-1]))
-				clickMultrandBatches = np.concatenate((np.array([objM.Orandc[0]]), objM.Orandc[1:] - objM.Orandc[:-1]))
-				batchMultrandCTR = clickMultrandBatches / accessMultrandBatches
+	if plots_ and analysistype=="decayLinUCB":
+		id = 109603
+		objC = articlesDecayLinUCB[id]
+		objM = articlesLinUCB[id]
 
-			yAccMax =max([max(accessMultBatches), max(accessSingleBatches)])
-			yCTRMax =max([max(batchMultCTR), max(batchChosenCTR)])
-			thetaMax = np.max(objC.theta)
-			thetaMin = np.min(objC.theta)
-			minTim, maxTim = min(objC.tim), max(objC.tim)
-			if 1:
-				f, axarr = plt.subplots(4, sharex=True)
-				axarr[0].set_ylim([thetaMin, thetaMax])
-				axarr[0].plot(objC.tim, objC.theta)
+		# tim = np.array(range(shape(articlesSingle[id][0])[0]))
+		maxClick = objC.ucbc[-1]
+		# calculating batch stats
+		with np.errstate(invalid='ignore'):
+			objC_access_batch = np.concatenate((np.array([objC.ucba[0]]), objC.ucba[1:] - objC.ucba[:-1]))
+			objC_click_batch = np.concatenate((np.array([objC.ucbc[0]]), objC.ucbc[1:] - objC.ucbc[:-1]))
+			objC_ctr_batch = objC_click_batch / objC_access_batch
 
-				axarr[0].set_ylabel('Daily \nPreferences')
-				axarr[0].set_title("Fluctuating popularity of article")
-				# axarr[0].set_title('title ID : ' + str(id) + 'Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
+			objM_access_batch = np.concatenate((np.array([objM.ucba[0]]), objM.ucba[1:] - objM.ucba[:-1]))
+			objM_click_batch = np.concatenate((np.array([objM.ucbc[0]]), objM.ucbc[1:] - objM.ucbc[:-1]))
+			objM_ctr_batch = objM_click_batch / objM_access_batch
 
-				axarr[1].set_ylim([thetaMin, thetaMax])
-				axarr[1].plot(objM.tim, objM.theta)
-				axarr[1].set_ylabel('Static \nPreferences')
+			accessMultrandBatches = np.concatenate((np.array([objM.Oranda[0]]), objM.Oranda[1:] - objM.Oranda[:-1]))
+			clickMultrandBatches = np.concatenate((np.array([objM.Orandc[0]]), objM.Orandc[1:] - objM.Orandc[:-1]))
+			batchMultrandCTR = clickMultrandBatches / accessMultrandBatches
 
-				# axarr[0].set_title('Plots of Daily Dynamic Theta for Min Diff CTR')
-				axarr[2].set_ylim([0, yAccMax])
-				axarr[2].plot(objC.tim, accessSingleBatches)
-				# axarr[2].plot(objC.tim, objS.ucba)
-				axarr[2].plot(objM.tim, accessMultBatches, 'm')
-				# axarr[2].plot(objM.tim, objM.ucba, 'm')
-
-				axarr[2].set_ylabel('Dynamic \nUCB Access', color='b')
-				axarrT = axarr[2].twinx()
-				axarrT.plot(objC.tim, batchChosenCTR, 'r')
-				axarrT.plot(objM.tim, batchMultCTR, 'g')
-				axarrT.plot(objM.tim, batchMultrandCTR, 'y')
-				axarrT.set_ylabel('Dynamic CTR', color='r')
-				# axarr[3].plot(objC.tim, objC.inPool, '.')
-				# axarr[3].plot(objC.tim, objC.selected, '.')
-				# axarr[3].plot(objM.tim, objM.inPool, '.')
-				# axarr[3].plot(objM.tim, objM.selected, '.')
-				# axarr[3].legend(['In Pool', 'Selected'])
-				axarr[3].plot(objC.tim, objC.varClus*alpha, objM.tim, objM.varClus*alpha)
-				# axarr[4].plot(objS.tim, objM.means)
-
-				axarr[2].set_xlabel('title ID : ' + str(id) + ' Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
-				# xlabel('days:' + ','.join([str(x) for x in list(set(objC.resetCount))]))
-				for t in articlesHours[id].restartTimes:
-					if t > minTim and t < maxTim:
-						xSet = [t for it in range(31)]
-						maxCTR = max([max(batchChosenCTR), max(batchMultCTR), max(batchMultrandCTR)])
-						ySet = (np.array(range(0, 31))*1.0/30)*maxCTR
-						# axarr[0].plot(xSet, ySet, 'black')
-						# axarr[1].plot(xSet, ySet, 'black')
-						axarrT.plot(xSet, ySet, 'black')
-			# from reset_count find the articles
-
-		if plots_ and MultipleAnalysis:
-			id = 109584
-			objM = articlesMultiple[id]
-
-			maxClick = objM.ucbc[-1]
-			# calculating batch stats
-			with np.errstate(invalid='ignore'):
-				accessMultBatches = np.concatenate((np.array([objM.ucba[0]]), objM.ucba[1:] - objM.ucba[:-1]))
-				clickMultBatches = np.concatenate((np.array([objM.ucbc[0]]), objM.ucbc[1:] - objM.ucbc[:-1]))
-				batchMultCTR = clickMultBatches / accessMultBatches
-
-				accessMultrandBatches = np.concatenate((np.array([objM.Oranda[0]]), objM.Oranda[1:] - objM.Oranda[:-1]))
-				clickMultrandBatches = np.concatenate((np.array([objM.Orandc[0]]), objM.Orandc[1:] - objM.Orandc[:-1]))
-				batchMultrandCTR = clickMultrandBatches / accessMultrandBatches
-
-			yAccMax =max(accessMultBatches)
-			yCTRMax =max(batchMultCTR)
-			thetaMax = np.max(objM.theta)
-			thetaMin = np.min(objM.theta)
-			minTim, maxTim = min(objM.tim), max(objM.tim)
-
-			f, axarr = plt.subplots(3, sharex=True)
+		yAccMax =max([max(objM_access_batch), max(objC_access_batch)])
+		yCTRMax =max([max(objM_ctr_batch), max(objC_ctr_batch)])
+		thetaMax = np.max([np.max(objC.theta),np.max(objM.theta)])
+		thetaMin = np.min([np.min(objC.theta),np.min(objM.theta)])
+		minTim, maxTim = min(objC.tim), max(objC.tim)
+		if 1:
+			f, axarr = plt.subplots(4, sharex=True)
 			axarr[0].set_ylim([thetaMin, thetaMax])
-			axarr[0].plot(objM.tim, objM.theta)
-			axarr[0].set_ylabel('Decaying \nParameters')
+			axarr[0].plot(objC.tim, objC.theta)
 
-			axarr[1].set_ylim([0, yAccMax])
-			axarr[1].plot(objM.tim, accessMultBatches, 'm')
-			axarr[1].set_ylabel('Dynamic \nUCB Access', color='b')
+			axarr[0].set_ylabel('DecayLinUCB \nPreferences')
+			# axarr[0].set_title("Fluctuating popularity of article")
+			# axarr[0].set_title('title ID : ' + str(id) + 'Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
 
-			axarrT = axarr[1].twinx()
+			axarr[1].set_ylim([thetaMin, thetaMax])
+			axarr[1].plot(objM.tim, objM.theta)
+			axarr[1].set_ylabel('LinUCB \nPreferences')
+
+			# axarr[0].set_title('Plots of Daily Dynamic Theta for Min Diff CTR')
+			axarr[2].set_ylim([0, yAccMax])
+			axarr[2].plot(objC.tim, objC_access_batch)
+			# axarr[2].plot(objC.tim, objS.ucba)
+			axarr[2].plot(objM.tim, objM_access_batch, 'm')
+			# axarr[2].plot(objM.tim, objM.ucba, 'm')
+
+			axarr[2].set_ylabel('LinUCB Access', color='m')
+			axarrT = axarr[2].twinx()
+			axarrT.plot(objC.tim, objC_ctr_batch, 'r')
+			axarrT.plot(objM.tim, objM_ctr_batch, 'g')
+			axarrT.plot(objM.tim, batchMultrandCTR, 'y')
+			axarrT.set_ylabel('LinUCB CTR', color='g')
+			axarr[2].legend(['Decay Acc','LinUCB Acc'], loc=2, prop={'size':8})
+			axarrT.legend(['Decay CTR','LinUCB CTR'], loc=1, prop={'size':8})
+			# axarr[3].plot(objC.tim, objC.inPool, '.')
+			# axarr[3].plot(objC.tim, objC.selected, '.')
+			# axarr[3].plot(objM.tim, objM.inPool, '.')
+			# axarr[3].plot(objM.tim, objM.selected, '.')
+			# axarr[3].legend(['In Pool', 'Selected'])
+			axarr[3].plot(objC.tim, objC.varClus*alpha, 'b')
+			axarr[3].plot(objM.tim, objM.varClus*alpha, 'r')
+			axarr[3].legend(['DecayLinUCB','LinUCB'], loc=3, prop={'size':10})
+			# axarr[4].plot(objS.tim, objM.means)
+
+			# axarr[2].set_xlabel('title ID : ' + str(id) + ' Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
+			# xlabel('days:' + ','.join([str(x) for x in list(set(objC.resetCount))]))
+			
+			for t in objC.restartTimes:
+				if t > minTim and t < maxTim:
+					xSet = [t for it in range(31)]
+					maxCTR = max([max(objC_ctr_batch), max(objM_ctr_batch), max(batchMultrandCTR)])
+					
+					ySet = thetaMin + (np.array(range(0, 31))*1.0/30)*(thetaMax - thetaMin)
+					axarr[0].plot(xSet, ySet, 'black')
+					axarr[1].plot(xSet, ySet, 'black')
+					ySet = (np.array(range(0, 31))*1.0/30)*maxCTR
+					axarrT.plot(xSet, ySet, 'black')
+
+	if plots_ and analysistype=="restartUCB":
+		id = 109641
+		objS = articlesSingle[id]
+		objH = articlesHours[id]
+		objC = objH
+		objM = articlesMultiple[id]
+
+		# tim = np.array(range(shape(articlesSingle[id][0])[0]))
+		maxClick = objC.ucbc[-1]
+		# calculating batch stats
+		with np.errstate(invalid='ignore'):
+			accessSingleBatches = np.concatenate((np.array([objC.ucba[0]]), objC.ucba[1:] - objC.ucba[:-1]))
+			clickSingleBatches = np.concatenate((np.array([objC.ucbc[0]]), objC.ucbc[1:] - objC.ucbc[:-1]))
+			batchChosenCTR = clickSingleBatches / accessSingleBatches
+
+			accessMultBatches = np.concatenate((np.array([objM.ucba[0]]), objM.ucba[1:] - objM.ucba[:-1]))
+			clickMultBatches = np.concatenate((np.array([objM.ucbc[0]]), objM.ucbc[1:] - objM.ucbc[:-1]))
+			batchMultCTR = clickMultBatches / accessMultBatches
+
+			accessMultrandBatches = np.concatenate((np.array([objM.Oranda[0]]), objM.Oranda[1:] - objM.Oranda[:-1]))
+			clickMultrandBatches = np.concatenate((np.array([objM.Orandc[0]]), objM.Orandc[1:] - objM.Orandc[:-1]))
+			batchMultrandCTR = clickMultrandBatches / accessMultrandBatches
+
+		yAccMax =max([max(accessMultBatches), max(accessSingleBatches)])
+		yCTRMax =max([max(batchMultCTR), max(batchChosenCTR)])
+		thetaMax = np.max(objC.theta)
+		thetaMin = np.min(objC.theta)
+		minTim, maxTim = min(objC.tim), max(objC.tim)
+		if 1:
+			f, axarr = plt.subplots(4, sharex=True)
+			axarr[0].set_ylim([thetaMin, thetaMax])
+			axarr[0].plot(objC.tim, objC.theta)
+
+			axarr[0].set_ylabel('Daily \nPreferences')
+			axarr[0].set_title("Fluctuating popularity of article")
+			# axarr[0].set_title('title ID : ' + str(id) + 'Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
+
+			axarr[1].set_ylim([thetaMin, thetaMax])
+			axarr[1].plot(objM.tim, objM.theta)
+			axarr[1].set_ylabel('Static \nPreferences')
+
+			# axarr[0].set_title('Plots of Daily Dynamic Theta for Min Diff CTR')
+			axarr[2].set_ylim([0, yAccMax])
+			axarr[2].plot(objC.tim, accessSingleBatches)
+			# axarr[2].plot(objC.tim, objS.ucba)
+			axarr[2].plot(objM.tim, accessMultBatches, 'm')
+			# axarr[2].plot(objM.tim, objM.ucba, 'm')
+
+			axarr[2].set_ylabel('Dynamic \nUCB Access', color='b')
+			axarrT = axarr[2].twinx()
+			axarrT.plot(objC.tim, batchChosenCTR, 'r')
 			axarrT.plot(objM.tim, batchMultCTR, 'g')
 			axarrT.plot(objM.tim, batchMultrandCTR, 'y')
 			axarrT.set_ylabel('Dynamic CTR', color='r')
+			# axarr[3].plot(objC.tim, objC.inPool, '.')
+			# axarr[3].plot(objC.tim, objC.selected, '.')
+			# axarr[3].plot(objM.tim, objM.inPool, '.')
+			# axarr[3].plot(objM.tim, objM.selected, '.')
+			# axarr[3].legend(['In Pool', 'Selected'])
+			axarr[3].plot(objC.tim, objC.varClus*alpha, objM.tim, objM.varClus*alpha)
+			# axarr[4].plot(objS.tim, objM.means)
 
-			# axarr[1].set_xlabel('title ID : ' + str(id) + ' Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
-
-			axarr[2].plot(objM.tim, objM.varClus*alpha)
-			
+			axarr[2].set_xlabel('title ID : ' + str(id) + ' Sessions:' + ','.join([str(x) for x in list(set(objH.resetCount))]) + ' Days:' + ','.join([str(x) for x in list(set(objS.resetCount))]))
+			# xlabel('days:' + ','.join([str(x) for x in list(set(objC.resetCount))]))
+			for t in articlesHours[id].restartTimes:
+				if t > minTim and t < maxTim:
+					xSet = [t for it in range(31)]
+					maxCTR = max([max(batchChosenCTR), max(batchMultCTR), max(batchMultrandCTR)])
+					ySet = (np.array(range(0, 31))*1.0/30)*maxCTR
+					# axarr[0].plot(xSet, ySet, 'black')
+					# axarr[1].plot(xSet, ySet, 'black')
+					axarrT.plot(xSet, ySet, 'black')

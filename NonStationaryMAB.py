@@ -38,7 +38,7 @@ class randomStruct:
 
 # data structure for LinUCB for a single article; 
 class LinUCBStruct:
-	def __init__(self, d):
+	def __init__(self, d, tim = None):
 		self.A = np.identity(n=d) 			# as given in the pseudo-code in the paper
 		self.b = np.zeros(d) 				# again the b vector from the paper 
 		self.A_inv = np.identity(n=d)		# the inverse
@@ -50,6 +50,7 @@ class LinUCBStruct:
 		self.mean = 0
 		self.DD = np.identity(n=d)*0
 		self.identityMatrix = np.identity(n=d)
+		self.last_access_time = tim
 
 	def reInitilize(self):
 		d = np.shape(self.A)[0]				# as theta is re-initialized some part of the structures are set to zero
@@ -65,21 +66,29 @@ class LinUCBStruct:
 	def updateInv(self):
 		self.A_inv = np.linalg.inv(self.A)		# update the inverse
 
-	def applydecay(self, decay, previousInsts, newInstance):
+	def applyDecay(self, decay, duration):
+		self.DD *= (decay**duration)
+		self.b *= (decay**duration)
+
+	def decayAverage(self, decay, previousInsts, newInstance, current_time):
+		if current_time:
+			results = decay**(current_time - self.last_access_time) * previousInsts + newInstance
+			self.last_access_time = current_time
+			return results
 		return decay*previousInsts + newInstance
 
-	def updateA(self, featureVector, decay=None):
+	def updateA(self, featureVector, decay=None, current_time=None):
 		if decay:
 			assert decay <= 1 and decay >=0
-			self.DD = self.applydecay(decay, self.DD, np.outer(featureVector, featureVector))
+			self.DD = self.decayAverage(decay, self.DD, np.outer(featureVector, featureVector), current_time)
 			self.A = self.DD + self.identityMatrix
 		else:
 			self.A += np.outer(featureVector, featureVector)
 
-	def updateB(self, featureVector, click, decay=None):
+	def updateB(self, featureVector, click, decay=None, current_time=None):
 		if decay:
 			assert decay <= 1 and decay >= 0
-			self.b = self.applydecay(decay, self.b, featureVector*click)
+			self.b = self.decayAverage(decay, self.b, featureVector*click, current_time)
 		else:
 			self.b += featureVector*click
 
@@ -195,6 +204,16 @@ def calculateCTRfromDict(dictionary, learn=True):
 		return cumClicks(dictionary, learn)*1.0 / accesses
 	else: return 0
 
+def parametersFromInt(alpha, decay):
+	alpha = .3 * alpha
+	decay = pow(decay*.1, 1.0/(24*60*60))
+	return alpha, decay
+
+def applyDecayToAll(articles_LinUCB, decay, duration):
+	for key in articles_LinUCB:
+		articles_LinUCB[key].applyDecay(decay, duration)
+	return True
+
 
 # the first thing that executes in this programme is this main function
 if __name__ == '__main__':
@@ -242,12 +261,12 @@ if __name__ == '__main__':
 	fileSig = 'multiple'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
 	reInitPerDay = 6								# how many times theta is re-initialized per day
 	batchSize = 20000								# size of one batch
-	testEnviornment = True
+	testEnviornment = False
 
 	decay = 1
 	d = 5 											# dimension of the input sizes
-	alpha_range = [i*0.1 for i in range(3,4)]
-	decay_range = [1 - 1.0/(4**i) for i in range(8,11)]
+	alpha_range = [i for i in range(3,4)]
+	decay_range = [i for i in range(9,10)]
 	# decay_range = [None]
 	ucbVars = [] 										# alpha in LinUCB; see pseudo-code
 	parameter_sweep = []
@@ -255,16 +274,18 @@ if __name__ == '__main__':
 		for decay in decay_range:
 			parameter_sweep.append([alpha, decay])
 
-	for alpha, decay in parameter_sweep:
+	for alp, dec  in parameter_sweep:
 
-		fileSig = 'Decay='+ str(decay)+'alpha='+str(alpha)+mode
+		fileSig = 'Decay='+ str(dec)+'alpha='+str(alp)+mode
+		alpha, decay = parametersFromInt(alp, dec)
+
 		if mode=="hours":
 			fileSig = fileSig + str(24/reInitPerDay)
 
 		eta = .2 										# parameter in e-greedy algorithm
 		p_learn = 1 									# determined the size of learn and deployment bucket. since its 1; deployment bucked is empty
 
-		# relative dictionaries for algorithms
+		# respective dictionaries for algorithms
 		articles_LinUCB = {} 
 		articles_greedy = {}
 		articles_random = {}
@@ -280,6 +301,7 @@ if __name__ == '__main__':
 		countLine = 0 			# number of articles in this batch. should be same as batch size; not so usefull
 		resetInterval = 0 		# initialize; value assigned later; determined when 
 		timeRun = datetime.datetime.now().strftime('_%m_%d_%H_%M') 	# the current data time
+		last_time = 0
 		dataDays = ['03', '04', '05', '06', '07', '08', '09', '10'] # the files from Yahoo that the algorithms will be run on; these files are indexed by days starting from May 1, 2009. this array starts from day 3 as also in the test data in the paper
 		
 		if testEnviornment:
@@ -353,6 +375,9 @@ if __name__ == '__main__':
 
 					# read the observation
 					tim, article_chosen, click, user_features, pool_articles = parseLine(line)
+					if tim != last_time:
+						applyDecayToAll(articles_LinUCB, decay, tim - last_time)
+						last_time = tim
 
 					# article ids for articles in the current pool for this observation
 					currentArticles = []
@@ -369,7 +394,7 @@ if __name__ == '__main__':
 						article_id = article[0]
 						currentArticles.append(article_id)
 						if article_id not in articles_LinUCB: #if its a new article; add it to dictionaries
-							articles_LinUCB[article_id] = LinUCBStruct(d)
+							articles_LinUCB[article_id] = LinUCBStruct(d, tim)
 							articles_greedy[article_id] = GreedyStruct()
 							articles_random[article_id] = randomStruct()
 							
@@ -416,8 +441,8 @@ if __name__ == '__main__':
 						if learn: # if learning bucket then use the observation to update the parameters
 							articles_LinUCB[article_chosen].learn_stats.addrecord(click)
 
-							articles_LinUCB[article_chosen].updateA(featureVector, decay=decay)
-							articles_LinUCB[article_chosen].updateB(featureVector, click, decay=decay)
+							articles_LinUCB[article_chosen].updateA(featureVector)
+							articles_LinUCB[article_chosen].updateB(featureVector, click)
 
 							articles_LinUCB[article_chosen].updateInv()
 							articles_LinUCB[article_chosen].updateTheta()
