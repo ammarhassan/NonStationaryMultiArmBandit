@@ -1,13 +1,36 @@
 import math
 import numpy as np
-import random
 from MAB_algorithms import *
+import datetime
+from matplotlib.pylab import *
+from random import sample
 
-def evolveTheta(type="linearTimeEvolution", **kwargs):
-	if type=="linearTimeEvolution":
-		return kwargs["initialTheta"] + (kwargs["initialTheta"] - kwargs["finalTheta"]) * kwargs["curr_time"]*1.0/kwargs["total_iterations"]
-	elif type=="constant":
-		return kwargs["initialTheta"]
+class batchStats():
+	def __init__(self):
+		self.stats = Stats()
+		self.clickArray = []
+		self.accessArray = []
+		self.CTRArray = []
+		self.time_ = []
+		self.poolMSE = []
+		self.articlesCTR = {}
+	def addRecord(self, iter_, poolMSE, poolArticles):
+		self.clickArray.append(self.stats.clicks)
+		self.accessArray.append(self.stats.accesses)
+		self.CTRArray.append(self.stats.CTR)
+		self.time_.append(iter_)
+		self.poolMSE.append(poolMSE)
+		for x in poolArticles:
+			if x in self.articlesCTR:
+				self.articlesCTR[x].append(poolArticles[x])
+			else:
+				self.articlesCTR[x] = [poolArticles[x]]
+
+	def plotArticle(self, article_id):
+		plot(self.time_, self.articlesCTR[article_id])
+		xlabel("Iterations")
+		ylabel("CTR")
+		title("")
 
 class Article():
 	def __init__(self, id, startTime, endTime, FV):
@@ -39,12 +62,29 @@ class User():
 		self.featureVector = featureVector
 
 class simulateOnlineData():
-	def __init__(self, n_articles, n_users, dimension):
+	def __init__(self, n_articles, n_users, dimension, iterations, type, environmentVars):
 		self.dimension = dimension
+		self.type = type
 		self.articles = []
+		self.articlePool = {}
 		self.users = []
+		self.iterations = iterations
 		self.simulateArticlePool(n_articles)
 		self.simulateUsers(n_users)
+		self.alg_perf = {}
+		self.iter_ = 0
+		self.batchSize = 10000
+		self.startTime = None
+		self.environmentVars = environmentVars
+
+	def regulateEnvironment(self):
+		if self.type=="abruptThetaChange":
+			if self.iter_%self.environmentVars["reInitiate"]==0:
+				for x in self.articlePool:
+					x.theta = self.featureUniform()
+				print "Re-initiating parameters"
+		elif self.type=="evolveTheta":
+			pass
 
 	def createIds(self, maxNum):
 		return map(
@@ -56,14 +96,34 @@ class simulateOnlineData():
 		return feature / self.dimension
 
 	def simulateArticlePool(self, n_articles):
-		articles_id = self.createIds(n_articles)
-		startTimes = [np.random.normal(loc=308023, scale=200430) for x in articles_id]
-		minT = min(startTimes)
-		startTimes = map(lambda x: x-minT, startTimes)
-		durations = [np.random.normal(loc=67433, scale=42674) for x in articles_id]
+		def getEndTimes():
+			pool = range(20)
+			endTimes = [0 for i in startTimes]
+			last = 20
+			for i in range(1, self.iterations / article_life+1):
+				chosen = sample(pool, 5)
+				for c in chosen:
+					endTimes[c] = article_life * i
+				pool = [x for x in pool if x not in chosen]
+				pool += [x for x in range(last,last+5) if x < len(startTimes)]
+				last += 5
+				if last > len(startTimes):
+					break
+			for p in pool:
+				endTimes[p] = self.iterations
+			return endTimes
 
-		for key, st, dur in zip(articles_id, startTimes, durations):
-			self.articles.append(Article(key, st, st+dur, self.featureUniform()))
+
+		assert n_articles >= 20
+		article_life = int(self.iterations / ((n_articles-20)*1.0/5))
+		print article_life
+		articles_id = self.createIds(n_articles)
+		startTimes = [0 for x in range(20)] + [
+			(1+ int(i/5))*article_life for i in range(n_articles - 20)]
+		endTimes = getEndTimes()
+		print startTimes, endTimes
+		for key, st, ed in zip(articles_id, startTimes, endTimes):
+			self.articles.append(Article(key, st, ed, self.featureUniform()))
 			self.articles[-1].theta = self.featureUniform()
 
 	def simulateUsers(self, numUsers):
@@ -76,22 +136,94 @@ class simulateOnlineData():
 		for x in self.articles:
 			x.evolveTheta()
 
-	def runAlgorithms(self, algorithms, time_):
-		poolArticles = [x for x in self.articles if x.inPool(time_)]
-		userArrived = choice(self.users)
-		for alg in algorithms:
-			pickedArticle = alg.decide(poolArticles, userArrived, time_)
-			clickExpectation = np.dot(pickedArticle.theta, userArrived.featureVector)
-			click = np.random.binomial(1, clickExpectation)
-			alg.updateParameters(pickedArticle, userArrived, click)
-			print "article Picked", pickedArticle.id, "user", userArrived.id, "click", click, "expected_click", clickExpectation
+	def getUser(self):
+		return choice(self.users)
+
+	def updateArticlePool(self):
+		self.articlePool = [x for x in self.articles if x.inPool(self.iter_)]
+
+	def runAlgorithms(self, algorithms):
+		self.startTime = datetime.datetime.now()
+		for self.iter_ in range(self.iterations):
+			self.regulateEnvironment()
+			self.updateArticlePool()
+			userArrived = self.getUser()
+			for alg_name, alg in algorithms.items():
+				pickedArticle = alg.decide(self.articlePool, userArrived, self.iter_)
+				clickExpectation = np.dot(pickedArticle.theta, userArrived.featureVector)
+				click = np.random.binomial(1, clickExpectation)
+				alg.updateParameters(pickedArticle, userArrived, click)
+
+				self.recordPerformance(alg_name, userArrived.id, click, pickedArticle.id)
+			if self.iter_%self.batchSize==0 and self.iter_>1:
+				self.batchRecord(algorithms)
+
+
+	def recordPerformance(self, alg_name, user_id, click, article_id):
+		if alg_name not in self.alg_perf:
+			self.alg_perf[alg_name] = batchStats()
+		self.alg_perf[alg_name].stats.addrecord(click)
+
+	def batchRecord(self, algorithms):
+		for alg_name, alg in algorithms.items():
+			poolArticlesCTR = dict([(x.id, alg.getarticleCTR(x.id)) for x in self.articlePool])
+			if self.iter_%self.batchSize == 0:
+				self.alg_perf[alg_name].addRecord(self.iter_, self.getPoolMSE(alg), poolArticlesCTR)
+
+		print "Iteration %d"%self.iter_, "Pool ", len(self.articlePool)," Elapsed time", datetime.datetime.now() - self.startTime
+
+	def analyzeExperiment(self):
+		"Plot vertical lines at specific events"
+		def plotLines(xlocs):
+			axes = plt.gca()
+			for x in xlocs:
+				xSet = [x for _ in range(31)]
+				ymin, ymax = axes.get_ylim()
+				ySet = ymin + (np.array(range(0, 31))*1.0/30) * (ymax - ymin)
+				plot(xSet, ySet, "black")
+
+		xlocs = list(set(map(lambda x: x.startTime, self.articles)))
+		figure()
+		for alg in self.alg_perf:
+			plot(self.alg_perf[alg].time_, self.alg_perf[alg].CTRArray)
+		legend(self.alg_perf.keys(), loc=4)
+		xlabel("Iteration")
+		ylabel("Cumulative CTR")
+		title("CTR Performance")
+		plotLines(xlocs)
+
+		figure()
+		for alg in self.alg_perf:
+			plot(self.alg_perf[alg].time_, self.alg_perf[alg].poolMSE)
+		legend(self.alg_perf.keys(), loc=3)
+		xlabel("Iteration")
+		ylabel("MSE")
+		title("Learning Error")
+		plotLines(xlocs)
+
+	def getPoolMSE(self, alg):
+		diff = 0
+		for article in self.articlePool:
+			diff += (sum(map(
+			abs, article.theta - alg.getLearntParams(article.id))))**2
+		diff = math.sqrt(diff)
+		return diff
+
 
 if __name__ == '__main__':
 
-	simExperiment = simulateOnlineData(n_articles=200, n_users=100, dimension=5)
+	for i in range(8):
+		simExperiment = simulateOnlineData(n_articles=50,
+							n_users=1000,
+							dimension=5,
+							iterations=500000,
+							type="abruptThetaChange",
+							environmentVars={"reInitiate":50000}
+						)
 
-	LinUCB = LinUCBAlgorithm(dimension=5, alpha=.3)
+		LinUCB = LinUCBAlgorithm(dimension=5, alpha=.3)
+		decLinUCB = LinUCBAlgorithm(dimension=5, alpha=.3, decay=.9)
 
-	for i in range(100):
-		simExperiment.runAlgorithms([LinUCB], i)
+		simExperiment.runAlgorithms({"LinUCB":LinUCB, "decLinUCB":decLinUCB})
+		simExperiment.analyzeExperiment()
 

@@ -8,18 +8,19 @@ import numpy as np 	# many operations are done in numpy as matrix inverse; for e
 
 
 class LinUCBAlgorithm:
-	def __init__(self, dimension, alpha):
+	def __init__(self, dimension, alpha, decay=None):
 		self.articles = {}
 		self.dimension = dimension
 		self.alpha = alpha
+		self.decay = decay
+		self.last_iteration_time = 0
 
-	def decide(self, pool_articles, user, tim):
+	def decide(self, pool_articles, user, time_):
 		minPTA = 0
 		articlePicked = None
 		for x in pool_articles:
 			if x.id not in self.articles:
-				self.articles[x.id] = LinUCBStruct(self.dimension, x.id, tim)
-			
+				self.articles[x.id] = LinUCBStruct(self.dimension, x.id, time_)
 			x_pta = self.articles[x.id].getProbability(user.featureVector, self.alpha)
 			
 			if minPTA < x_pta:
@@ -28,8 +29,25 @@ class LinUCBAlgorithm:
 
 		return articlePicked
 
-	def updateParameters(self, pickedArticle, userArrived, click):
+	def updateParameters(self, pickedArticle, userArrived, click, time_=0):
 		self.articles[pickedArticle.id].updateParameters(userArrived.featureVector, click)
+		if self.decay:
+			# each iteration is 1 second.
+			self.applyDecayToAll(duration=time_ - self.last_iteration_time)
+			self.last_iteration_time = time_
+
+	def applyDecayToAll(self, duration):
+		for key in self.articles:
+			self.articles[key].applyDecay(self.decay, duration)
+		return True
+
+	def getLearntParams(self, article_id):
+		return self.articles[article_id].theta
+
+	def getarticleCTR(self, article_id):
+		return self.articles[article_id].learn_stats.CTR
+
+
 
 
 class LinUCBStruct:
@@ -38,15 +56,15 @@ class LinUCBStruct:
 		self.A = np.identity(n=d) 			# as given in the pseudo-code in the paper
 		self.b = np.zeros(d) 				# again the b vector from the paper 
 		self.A_inv = np.identity(n=d)		# the inverse
-		self.learn_stats = articleAccess()	# in paper the evaluation is done on two buckets; so the stats are saved for both of them separately; In this code I am not doing deployment, so the code learns on all examples
-		self.deploy_stats = articleAccess()
+		self.learn_stats = Stats()	# in paper the evaluation is done on two buckets; so the stats are saved for both of them separately; In this code I am not doing deployment, so the code learns on all examples
+		self.deploy_stats = Stats()
 		self.theta = np.zeros(d)			# the famous theta
 		self.pta = 0 						# the probability of this article being chosen
 		self.var = 0
 		self.mean = 0
 		self.DD = np.identity(n=d)*0
 		self.identityMatrix = np.identity(n=d)
-		self.last_access_time = tim
+		self.startTime = tim
 
 	def reInitilize(self):
 		d = np.shape(self.A)[0]				# as theta is re-initialized some part of the structures are set to zero
@@ -65,9 +83,10 @@ class LinUCBStruct:
 
 	def applyDecay(self, decay, duration):
 		self.DD *= (decay**duration)
-		self.updateA()
-		self.updateInv()		
 		self.b *= (decay**duration)
+		
+		self.updateA()
+		self.updateInv()
 		self.updateTheta()
 
 	def updateInv(self):
@@ -86,7 +105,7 @@ class LinUCBStruct:
 		return self.pta
 
 
-class articleAccess():
+class Stats():
 	def __init__(self):
 		self.accesses = 0.0 # times the article was chosen to be presented as the best articles
 		self.clicks = 0.0 	# of times the article was actually clicked by the user
@@ -102,3 +121,4 @@ class articleAccess():
 	def addrecord(self, click):
 		self.clicks += click
 		self.accesses += 1
+		self.updateCTR()
