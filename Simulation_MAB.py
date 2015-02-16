@@ -41,6 +41,8 @@ class Article():
 		self.theta = None
 		self.featureVector = FV
 		self.deltaTheta = None
+		self.absDiff = {}
+		self.time_ = {}
 
 	def setTheta(self, theta):
 		self.initialTheta = theta
@@ -54,6 +56,26 @@ class Article():
 
 	def inPool(self, curr_time):
 		return curr_time <= self.endTime and curr_time >= self.startTime
+
+	def addRecord(self, time_, absDiff, alg_name):
+		if alg_name in self.time_:
+			self.time_[alg_name].append(time_)
+		else:
+			self.time_[alg_name] = [time_]
+
+		if alg_name in self.absDiff:
+			self.absDiff[alg_name].append(absDiff)
+		else:
+			self.absDiff[alg_name] = [absDiff]
+
+	def plotAbsDiff(self):
+		figure()
+		for k in self.time_.keys():
+			plot(self.time_[k], self.absDiff[k])
+		legend(self.time_.keys(), loc=2)
+		xlabel("iterations")
+		ylabel("Abs Difference between Learnt and True parameters")
+		title("Observing Learnt Parameter Difference")
 
 
 class User():
@@ -69,13 +91,13 @@ class simulateOnlineData():
 		self.articlePool = {}
 		self.users = []
 		self.iterations = iterations
-		self.simulateArticlePool(n_articles)
-		self.simulateUsers(n_users)
 		self.alg_perf = {}
 		self.iter_ = 0
-		self.batchSize = 10000
+		self.batchSize = 1000
 		self.startTime = None
 		self.environmentVars = environmentVars
+		self.simulateArticlePool(n_articles)
+		self.simulateUsers(n_users)
 
 	def regulateEnvironment(self):
 		if self.type=="abruptThetaChange":
@@ -113,14 +135,17 @@ class simulateOnlineData():
 				endTimes[p] = self.iterations
 			return endTimes
 
-
-		assert n_articles >= 20
-		article_life = int(self.iterations / ((n_articles-20)*1.0/5))
-		print article_life
 		articles_id = self.createIds(n_articles)
-		startTimes = [0 for x in range(20)] + [
-			(1+ int(i/5))*article_life for i in range(n_articles - 20)]
-		endTimes = getEndTimes()
+		if n_articles >= 20:
+			article_life = int(self.iterations / ((n_articles-20)*1.0/5))
+			print article_life
+			startTimes = [0 for x in range(20)] + [
+				(1+ int(i/5))*article_life for i in range(n_articles - 20)]
+			endTimes = getEndTimes()
+		else:
+			startTimes = [0 for x in range(n_articles)]
+			endTimes = [self.iterations for x in range(n_articles)]
+
 		print startTimes, endTimes
 		for key, st, ed in zip(articles_id, startTimes, endTimes):
 			self.articles.append(Article(key, st, ed, self.featureUniform()))
@@ -152,14 +177,14 @@ class simulateOnlineData():
 				pickedArticle = alg.decide(self.articlePool, userArrived, self.iter_)
 				clickExpectation = np.dot(pickedArticle.theta, userArrived.featureVector)
 				click = np.random.binomial(1, clickExpectation)
-				alg.updateParameters(pickedArticle, userArrived, click)
+				alg.updateParameters(pickedArticle, userArrived, click, self.iter_)
 
-				self.recordPerformance(alg_name, userArrived.id, click, pickedArticle.id)
+				self.iterationRecord(alg_name, userArrived.id, click, pickedArticle.id)
 			if self.iter_%self.batchSize==0 and self.iter_>1:
 				self.batchRecord(algorithms)
 
 
-	def recordPerformance(self, alg_name, user_id, click, article_id):
+	def iterationRecord(self, alg_name, user_id, click, article_id):
 		if alg_name not in self.alg_perf:
 			self.alg_perf[alg_name] = batchStats()
 		self.alg_perf[alg_name].stats.addrecord(click)
@@ -169,6 +194,9 @@ class simulateOnlineData():
 			poolArticlesCTR = dict([(x.id, alg.getarticleCTR(x.id)) for x in self.articlePool])
 			if self.iter_%self.batchSize == 0:
 				self.alg_perf[alg_name].addRecord(self.iter_, self.getPoolMSE(alg), poolArticlesCTR)
+
+			for article in self.articlePool:
+				article.addRecord(self.iter_, self.getArticleAbsDiff(alg, article), alg_name)
 
 		print "Iteration %d"%self.iter_, "Pool ", len(self.articlePool)," Elapsed time", datetime.datetime.now() - self.startTime
 
@@ -204,25 +232,28 @@ class simulateOnlineData():
 	def getPoolMSE(self, alg):
 		diff = 0
 		for article in self.articlePool:
-			diff += (sum(map(
-			abs, article.theta - alg.getLearntParams(article.id))))**2
+			diff += self.getArticleAbsDiff(alg, article)**2
 		diff = math.sqrt(diff)
 		return diff
+
+	def getArticleAbsDiff(self, alg, article):
+		return sum(map(abs, article.theta - alg.getLearntParams(article.id)))
 
 
 if __name__ == '__main__':
 
-	for i in range(8):
+	for i in range(1):
 		simExperiment = simulateOnlineData(n_articles=50,
 							n_users=1000,
 							dimension=5,
-							iterations=500000,
-							type="abruptThetaChange",
-							environmentVars={"reInitiate":50000}
+							iterations=200000,
+							# type="abruptThetaChange",
+							type="ConstantTheta",
+							environmentVars={"reInitiate":100000}
 						)
 
 		LinUCB = LinUCBAlgorithm(dimension=5, alpha=.3)
-		decLinUCB = LinUCBAlgorithm(dimension=5, alpha=.3, decay=.9)
+		decLinUCB = LinUCBAlgorithm(dimension=5, alpha=.3, decay=.9999)
 
 		simExperiment.runAlgorithms({"LinUCB":LinUCB, "decLinUCB":decLinUCB})
 		simExperiment.analyzeExperiment()

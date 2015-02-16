@@ -29,7 +29,7 @@ class LinUCBAlgorithm:
 
 		return articlePicked
 
-	def updateParameters(self, pickedArticle, userArrived, click, time_=0):
+	def updateParameters(self, pickedArticle, userArrived, click, time_):
 		self.articles[pickedArticle.id].updateParameters(userArrived.featureVector, click)
 		if self.decay:
 			# each iteration is 1 second.
