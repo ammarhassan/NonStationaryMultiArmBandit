@@ -1,0 +1,8 @@
+Here we experiment with time decay model of LinUCB.
+Unlike previous implementation in Run 22 and Run 23, in this experiment the decay continously applied with the passage of time. every new second a decay is applied to all the articles, this way the confidence in the sleeping
+articles also decays and hence after some time they are explored again.
+
+The calculation of decay is also different from the last experiments
+	1. the desired decay is calculated that will be applied to an observation after a day. e.g if we want decay on observation that occured a day ago to be 0.5 then 
+		decay = pow([.5, 1/(24*60*60)). hence after being multipled by the seconds of the day, the decay applied will be 0.5.
+ 

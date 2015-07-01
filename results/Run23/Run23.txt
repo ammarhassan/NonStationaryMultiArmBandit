@@ -1,0 +1,3 @@
+In this experiment we ran the selected parameters
+	alpha = .2	decay = 1 - 1/(4**3)	Result=1.01248354211
+	alpha = .6	decay = 1 - 1/(4**13)	Result=1.12437910113

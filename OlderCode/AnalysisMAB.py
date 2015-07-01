@@ -1,5 +1,6 @@
 """
 This file parse the results of the algorithms; load them in appropriate datastructures; plots and do statistics
+Run15
 """
 import numpy as np
 import os
@@ -120,36 +121,36 @@ def summary(articles, variableName):
 
 if __name__ == '__main__':
 
-	filenames =[x for x in os.listdir(save_address) if '.csv' in x]
-	# dictionaries for three modes of data
-	articlesSingle = {}
-	articlesMultiple = {}
-	articlesHours = {}
+	# filenames =[x for x in os.listdir(save_address) if '.csv' in x]
+	# # dictionaries for three modes of data
+	# articlesSingle = {}
+	# articlesMultiple = {}
+	# articlesHours = {}
 
-	# calculating how many times theta was reset. Theta stays static in a file.
-	countSingle = 1
-	countMultiple = 1
-	countHours = 1
-	for x in filenames:
-		print x
-		if 'Single' in x:
-			articlesSingle = fill_DS(os.path.join(save_address, x), articlesSingle, countSingle)
-			countSingle = countSingle + 1
-		elif 'Multiple' in x:
-			articlesMultiple = fill_DS(os.path.join(save_address,x), articlesMultiple, countMultiple)
-		elif '4Hours' in x:
-			articlesHours = fill_DS(os.path.join(save_address,x), articlesHours, countHours)
-			countHours = countHours + 1
+	# # calculating how many times theta was reset. Theta stays static in a file.
+	# countSingle = 1
+	# countMultiple = 1
+	# countHours = 1
+	# for x in filenames:
+	# 	print x
+	# 	if 'Single' in x:
+	# 		articlesSingle = fill_DS(os.path.join(save_address, x), articlesSingle, countSingle)
+	# 		countSingle = countSingle + 1
+	# 	elif 'Multiple' in x:
+	# 		articlesMultiple = fill_DS(os.path.join(save_address,x), articlesMultiple, countMultiple)
+	# 	elif '4Hours' in x:
+	# 		articlesHours = fill_DS(os.path.join(save_address,x), articlesHours, countHours)
+	# 		countHours = countHours + 1
 
-	# converting to Numpy arrays
-	for x in articlesSingle:
-		articlesSingle[x].done()
+	# # converting to Numpy arrays
+	# for x in articlesSingle:
+	# 	articlesSingle[x].done()
 
-	for x in articlesMultiple:
-		articlesMultiple[x].done()
+	# for x in articlesMultiple:
+	# 	articlesMultiple[x].done()
 
-	for x in articlesHours:
-		articlesHours[x].done()
+	# for x in articlesHours:
+	# 	articlesHours[x].done()
 
 
 	# finding the difference of CTR after and before 
@@ -160,7 +161,7 @@ if __name__ == '__main__':
 	differences = [x[2] for x in diff]
 	print '\n'.join([str(x[0]) + ', ' + str(x[1]) + ', ' + str(x[2]) for x in diff])
 
-	id = 109780
+	id = 109652
 	objS = articlesSingle[id]
 	objH = articlesHours[id]
 	objC = objH
@@ -178,13 +179,17 @@ if __name__ == '__main__':
 		clickMultBatches = np.concatenate((np.array([objM.ucbc[0]]), objM.ucbc[1:] - objM.ucbc[:-1]))
 		batchMultCTR = clickMultBatches / accessMultBatches
 
+		accessMultBatchesR = np.concatenate((np.array([0]), objM.Oranda[1:] - objM.Oranda[:-1]))
+		clickMultBatchesR = np.concatenate((np.array([0]), objM.Orandc[1:] - objM.Orandc[:-1]))
+
+
 	yAccMax =max([max(accessMultBatches), max(accessSingleBatches)])
 	yCTRMax =max([max(batchMultCTR), max(batchSingleCTR)])
 	thetaMax = np.max(objC.theta)
 	thetaMin = np.min(objC.theta)
 	minTim, maxTim = min(objC.tim), max(objC.tim)
 	if 1:
-		f, axarr = plt.subplots(4, sharex=True)
+		f, axarr = plt.subplots(3, sharex=True)
 		axarr[0].set_ylim([thetaMin, thetaMax])
 		axarr[0].plot(objC.tim, objC.theta)
 		axarr[0].set_ylabel('Daily \nPreferences')
@@ -195,19 +200,24 @@ if __name__ == '__main__':
 		axarr[1].set_ylabel('Static \nPreferences')
 
 		# axarr[0].set_title('Plots of Daily Dynamic Theta for Min Diff CTR')
-		axarr[2].set_ylim([0, yAccMax])
-		axarr[2].plot(objC.tim, accessSingleBatches)
-		axarr[2].plot(objM.tim, accessMultBatches, 'm')
+		# axarr[2].set_ylim([0, yAccMax])
+		# axarr[2].plot(objC.tim, accessSingleBatches)
+		# axarr[2].plot(objM.tim, accessMultBatches, 'm')
+		# axarr[2].plot(objM.tim, accessMultBatchesR,)
+		axarr[2].plot(objM.tim, clickMultBatchesR, 'y')
 		axarr[2].set_ylabel('Dynamic \nUCB Access', color='b')
 		axarrT = axarr[2].twinx()
-		axarrT.plot(objC.tim, objC.ucbCTR, 'r')
+		# axarrT.plot(objC.tim, objC.ucbCTR, 'r')
 		axarrT.plot(objM.tim, objM.ucbCTR, 'g')
+		axarrT.plot(objM.tim, objM.OrandCTR, 'g')
+
 		axarrT.set_ylabel('Dynamic CTR', color='r')
 		# axarr[3].plot(objC.tim, objC.inPool, '.')
 		# axarr[3].plot(objC.tim, objC.selected, '.')
-		axarr[3].plot(objM.tim, objM.inPool, '.')
-		axarr[3].plot(objM.tim, objM.selected, '.')
-		axarr[3].legend(['In Pool', 'Selected'])
+
+		# axarr[3].plot(objM.tim, objM.inPool, '.')
+		# axarr[3].plot(objM.tim, objM.selected, '.')
+		# axarr[3].legend(['In Pool', 'Selected'])
 		xlabel('days:' + ','.join([str(x) for x in list(set(objC.resetCount))]))
 
 	# from reset_count find the articles

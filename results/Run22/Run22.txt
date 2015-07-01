@@ -1,0 +1,11 @@
+the alpha=.3
+
+In this run we experiment with decaying LinUCB strategy.
+1. For day 1 we find the best decay parameter from [1 - 1.0/(4**i) for i in range(1,15)] and alpha sweep over [.2*i for i in range(1,5)].
+2. Code is added in the LinUCB datastrcutre to account for the weight.
+3. This translates into weighted ridge regression.
+4. Following is the decay strategy
+	D = (1-weight)*D + weight*outerProduct(featureVectore, featureVector)
+	A = I*\lambda + D
+	b = (1-weight)*b + weight*reward*featureVector 
+
