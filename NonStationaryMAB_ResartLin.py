@@ -61,6 +61,7 @@ class LinUCBStruct:
 		self.A_inv = np.identity(n=d)
 		self.theta = np.zeros(d)
 		self.pta = 0
+		self.DD = np.identity(n=d)
 
 	def updateTheta(self):
 		self.theta = np.dot(self.A_inv, self.b) # as good software code a function to update internal variables

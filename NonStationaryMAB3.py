@@ -59,6 +59,7 @@ class LinUCBStruct:
 		self.A_inv = np.identity(n=d)
 		self.theta = np.zeros(d)
 		self.pta = 0
+		self.DD = np.identity(n=d)
 
 	def updateTheta(self):
 		# self.updateA(featureVector, decay, current_time)
