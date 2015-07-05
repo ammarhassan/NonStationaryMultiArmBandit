@@ -37,7 +37,7 @@ class randomStruct:
 		self.deploy_stats = articleAccess()
 
 # data structure for LinUCB for a single article; 
-class LinUCBStruct:
+class LinUCBStruct(object):
 	def __init__(self, d, tim = None):
 		self.A = np.identity(n=d) 			# as given in the pseudo-code in the paper
 		self.b = np.zeros(d) 				# again the b vector from the paper 
@@ -51,8 +51,7 @@ class LinUCBStruct:
 		self.DD = np.identity(n=d)*0
 		self.identityMatrix = np.identity(n=d)
 		self.last_access_time = tim
-		self.counter = 0
-		self.intervalNum = 0
+		
 
 	def reInitilize(self):
 		d = np.shape(self.A)[0]				# as theta is re-initialized some part of the structures are set to zero
@@ -61,7 +60,7 @@ class LinUCBStruct:
 		self.A_inv = np.identity(n=d)
 		self.theta = np.zeros(d)
 		self.pta = 0
-		self.DD = np.identity(n=d)
+        self.DD = np.identity(n=d)
 
 	def updateTheta(self):
 		self.theta = np.dot(self.A_inv, self.b) # as good software code a function to update internal variables
@@ -113,6 +112,12 @@ class LinUCBStruct:
 		return self.mean
 
 
+class Researt_LinStruct(LinUCBStruct):
+	def __init__(self):
+		LinUCBStruct.__init__(self, d, tim = None)
+		self.counter = 0
+		self.intervalNum = 0
+
 
 # this is for without context UCB. This is not used in this code. for future implementations
 class UCBStruct:								
@@ -129,14 +134,6 @@ class GreedyStruct:
 	def __init__(self):
 		self.learn_stats = articleAccess()
 		self.deploy_stats = articleAccess()
-
-# class GreedySegStruct():
-# 	def __init__(self, numUsers):
-# 		self.clusters = dict([(x, GreedyStruct()) for x in range(numUsers)])
-
-# class LinUCBSegStruct():
-# 	def __init__(self, numUsers):
-# 		self.clusters = dict([(x, UCBStruct()) for x in range(numUsers)])
 
 # This code simply reads one line from the source files of Yahoo!. Please see the yahoo info file to understand the format. I tested this part; so should be good but second pair of eyes could help
 def parseLine(line):
@@ -214,9 +211,9 @@ def parametersFromInt(alpha, decay):
 	decay = 1 - pow(.1, decay)
 	return alpha, decay
 
-def applyDecayToAll(articles_LinUCB, decay, duration):
-	for key in articles_LinUCB:
-		articles_LinUCB[key].applyDecay(decay, duration)
+def applyDecayToAll(articles_ReStartLinUCB, decay, duration):
+	for key in articles_ReStartLinUCB:
+		articles_ReStartLinUCB[key].applyDecay(decay, duration)
 	return True
 
 
@@ -233,8 +230,8 @@ if __name__ == '__main__':
 		else:
 			randomLearnCTR = randomC *1.0 / randomLA 
 		
-		UCBLA = cumAccess(articles_LinUCB, learn=True) 
-		UCBC = cumClicks(articles_LinUCB, learn=True)
+		UCBLA = cumAccess(articles_ReStartLinUCB, learn=True) 
+		UCBC = cumClicks(articles_ReStartLinUCB, learn=True)
 		if UCBLA == 0:
 			UCBLearnCTR = 0.0
 		else:
@@ -252,9 +249,8 @@ if __name__ == '__main__':
 		print 'GreedLrn', greedyLearnCTR,
 		if p_learn < 1:
 			randomDeployCTR = calculateCTRfromDict(articles_random, learn=False) 
-			UCBDeployCTR = calculateCTRfromDict(articles_LinUCB, learn=False) 
-			greedyDeployCTR = calculateCTRfromDict(articles_greedy, learn=False) 
-		
+			UCBDeployCTR = calculateCTRfromDict(articles_ReStartLinUCB, learn=False) 
+			greedyDeployCTR = calculateCTRfromDict(articles_greedy, learn=False) 	
 
 			print 'UCBDep', UCBDeployCTR / randomDeployCTR,
 			print 'GreedDep', greedyDeployCTR / randomDeployCTR,
@@ -262,12 +258,12 @@ if __name__ == '__main__':
 
 		recordedStats = [ UCBLA, UCBC, randomLA, randomC, greedyLA, greedyC]
 		# write to file
-		save_to_file(fileNameWrite, articles_LinUCB, recordedStats, epochArticles, epochSelectedArticles, tim)
+		save_to_file(fileNameWrite, articles_ReStartLinUCB, recordedStats, epochArticles, epochSelectedArticles, tim)
 
 	# this function reset theta for all articles
 	def re_initialize_article_Structs():
-		for x in articles_LinUCB:
-			articles_LinUCB[x].reInitilize()
+		for x in articles_ReStartLinUCB:
+			articles_ReStartLinUCB[x].reInitilize()
 
 
 	modes = {0:'multiple', 1:'single', 2:'hours'} 	# the possible modes that this code can be run in; 'multiple' means multiple days or all days so theta dont change; single means it is reset every day; hours is reset after some hours depending on the reInitPerDay. 
@@ -301,7 +297,7 @@ if __name__ == '__main__':
 	p_learn = 1 									# determined the size of learn and deployment bucket. since its 1; deployment bucked is empty
 
 	# respective dictionaries for algorithms
-	articles_LinUCB = {} 
+	articles_ReStartLinUCB = {} 
 	articles_greedy = {}
 	articles_random = {}
 
@@ -381,8 +377,6 @@ if __name__ == '__main__':
 					epochSelectedArticles = {}
 					print "hours thing fired!!"
 
-				
-
 				# number of observations seen in this batch; reset after start of new batch
 				
 
@@ -391,7 +385,7 @@ if __name__ == '__main__':
 				# if tim != last_time:
 				# 	# if tim>last_time:
 				# 	timcount +=1
-				# 	applyDecayToAll(articles_LinUCB, decay, tim - last_time)
+				# 	applyDecayToAll(articles_ReStartLinUCB, decay, tim - last_time)
 				# last_time = tim
 
 				# article ids for articles in the current pool for this observation
@@ -408,8 +402,8 @@ if __name__ == '__main__':
 
 					article_id = article[0]
 					currentArticles.append(article_id)
-					if article_id not in articles_LinUCB: #if its a new article; add it to dictionaries
-						articles_LinUCB[article_id] = LinUCBStruct(d, tim)
+					if article_id not in articles_ReStartLinUCB: #if its a new article; add it to dictionaries
+						articles_ReStartLinUCB[article_id] = LinUCBStructReseart_LinStruct(d, tim)
 						articles_greedy[article_id] = GreedyStruct()
 						articles_random[article_id] = randomStruct()
 						
@@ -423,20 +417,20 @@ if __name__ == '__main__':
 					
 					# Calculate LinUCB confidence bound; done in three steps for readability
 					# please check this code for correctness
-					articles_LinUCB[article_id].mean = np.dot(articles_LinUCB[article_id].theta, featureVector)
-					articles_LinUCB[article_id].var = np.sqrt(np.dot(np.dot(featureVector,articles_LinUCB[article_id].A_inv), featureVector))
-					articles_LinUCB[article_id].pta = articles_LinUCB[article_id].mean + alpha * articles_LinUCB[article_id].var
+					articles_ReStartLinUCB[article_id].mean = np.dot(articles_ReStartLinUCB[article_id].theta, featureVector)
+					articles_ReStartLinUCB[article_id].var = np.sqrt(np.dot(np.dot(featureVector,articles_ReStartLinUCB[article_id].A_inv), featureVector))
+					articles_ReStartLinUCB[article_id].pta = articles_ReStartLinUCB[article_id].mean + alpha * articles_ReStartLinUCB[article_id].var
 					#Decay environment
-					#articles_LinUCB[article_id].pta = articles_LinUCB[article_id].mean + alpha * (decay**effectiveObservations)*articles_LinUCB[article_id].var
+					#articles_ReStartLinUCB[article_id].pta = articles_ReStartLinUCB[article_id].mean + alpha * (decay**effectiveObservations)*articles_ReStartLinUCB[article_id].var
 
 				if article_chosen not in epochSelectedArticles:
 					epochSelectedArticles[article_chosen] = 1
 				else:
 					epochSelectedArticles[article_chosen] = epochSelectedArticles[article_chosen] + 1					
-					# if articles_LinUCB[article_id].pta < 0: print 'PTA', articles_LinUCB[article_id].pta,
+					# if articles_ReStartLinUCB[article_id].pta < 0: print 'PTA', articles_ReStartLinUCB[article_id].pta,
 
 				# articles picked by LinUCB
-				ucbArticle = max(np.random.permutation([(x, articles_LinUCB[x].pta) for x in currentArticles]), key=itemgetter(1))[0]
+				ucbArticle = max(np.random.permutation([(x, articles_ReStartLinUCB[x].pta) for x in currentArticles]), key=itemgetter(1))[0]
 
 				# article picked by random strategy
 				randomArticle = choice(currentArticles)
@@ -458,23 +452,23 @@ if __name__ == '__main__':
 				if ucbArticle==article_chosen:
 					effectiveObservations += 1
 					#update all existing articles' counter
-					for x in articles_LinUCB:
-						articles_LinUCB[x].counter +=1
-						if articles_LinUCB[x].counter == 2**(articles_LinUCB[x].intervalNum):
-							articles_LinUCB[x].reInitilize()
-							articles_LinUCB[x].intervalNum +=1
+					for x in articles_ReStartLinUCB:
+						articles_ReStartLinUCB[x].counter +=1
+						if articles_ReStartLinUCB[x].counter == 2**(articles_ReStartLinUCB[x].intervalNum):
+							articles_ReStartLinUCB[x].reInitilize()
+							articles_ReStartLinUCB[x].intervalNum +=1
 							print 'reInitilize', str(x)
 
 					if learn: # if learning bucket then use the observation to update the parameters
-						articles_LinUCB[article_chosen].learn_stats.addrecord(click)
+						articles_ReStartLinUCB[article_chosen].learn_stats.addrecord(click)
 
-						articles_LinUCB[article_chosen].updateA(featureVector)
-						articles_LinUCB[article_chosen].updateB(featureVector, click)
+						articles_ReStartLinUCB[article_chosen].updateA(featureVector)
+						articles_ReStartLinUCB[article_chosen].updateB(featureVector, click)
 
-						articles_LinUCB[article_chosen].updateInv()
-						articles_LinUCB[article_chosen].updateTheta()
+						articles_ReStartLinUCB[article_chosen].updateInv()
+						articles_ReStartLinUCB[article_chosen].updateTheta()
 					else:
-						articles_LinUCB[article_chosen].deploy_stats.addrecord(click)
+						articles_ReStartLinUCB[article_chosen].deploy_stats.addrecord(click)
 
 				# if greedy article is chosen by evalution strategy
 				if greedyArticle == article_chosen:
@@ -498,9 +492,9 @@ if __name__ == '__main__':
 					epochSelectedArticles = {}
 
 				# if article_chosen==ucbArticle:
-				# 	# print article_chosen, [(_, "{:0.3f}".format(articles_LinUCB[_].getMean()), articles_LinUCB[_].getSpecialVar()) for _ in articles_LinUCB.keys() if articles_LinUCB[_].getMean()>0]
-				# 	print article_chosen, click, np.linalg.det(np.outer(featureVector, featureVector)), [(_, np.linalg.det(articles_LinUCB[_].A)) for _ in articles_LinUCB.keys() if articles_LinUCB[_].getMean()>0 or _==article_chosen] 
-				# 	ucbVars.append(articles_LinUCB[109498].getSpecialVar())
+				# 	# print article_chosen, [(_, "{:0.3f}".format(articles_ReStartLinUCB[_].getMean()), articles_ReStartLinUCB[_].getSpecialVar()) for _ in articles_ReStartLinUCB.keys() if articles_ReStartLinUCB[_].getMean()>0]
+				# 	print article_chosen, click, np.linalg.det(np.outer(featureVector, featureVector)), [(_, np.linalg.det(articles_ReStartLinUCB[_].A)) for _ in articles_ReStartLinUCB.keys() if articles_ReStartLinUCB[_].getMean()>0 or _==article_chosen] 
+				# 	ucbVars.append(articles_ReStartLinUCB[109498].getSpecialVar())
 
 				totalClicks = totalClicks + click
 
