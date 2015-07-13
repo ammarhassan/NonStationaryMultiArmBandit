@@ -38,18 +38,24 @@ class randomStruct:
 
 # data structure for LinUCB for a single article; 
 class LinUCBStruct(object):
-	def __init__(self, d, tim = None):
+	def __init__(self, d, articleID, alpha,tim = None):
+		self.articleID = articleID
 		self.A = np.identity(n=d) 			# as given in the pseudo-code in the paper
+                self.A_inv= np.linalg.inv(self.A)
 		self.b = np.zeros(d) 				# again the b vector from the paper 
-		self.A_inv = np.identity(n=d)		# the inverse
-		self.learn_stats = articleAccess()	# in paper the evaluation is done on two buckets; so the stats are saved for both of them separately; In this code I am not doing deployment, so the code learns on all examples
-		self.deploy_stats = articleAccess()
-		self.theta = np.zeros(d)			# the famous theta
+		self.alpha = alpha
+		
+		self.theta = np.dot(self.A_inv, self.b)
+		
 		self.pta = 0 						# the probability of this article being chosen
 		self.var = 0
 		self.mean = 0
-		self.DD = np.identity(n=d)*0
+
 		self.identityMatrix = np.identity(n=d)
+
+		self.learn_stats = articleAccess()	# in paper the evaluation is done on two buckets; so the stats are saved for both of them separately; In this code I am not doing deployment, so the code learns on all examples
+		self.deploy_stats = articleAccess()
+		
 		self.last_access_time = tim
 		
 
@@ -58,82 +64,35 @@ class LinUCBStruct(object):
 		self.A = np.identity(n=d)
 		self.b = np.zeros(d)
 		self.A_inv = np.identity(n=d)
-		self.theta = np.zeros(d)
-		self.pta = 0
-        self.DD = np.identity(n=d)
+		self.theta = np.dot(self.A_inv, self.b)
 
-	def updateTheta(self):
-		self.theta = np.dot(self.A_inv, self.b) # as good software code a function to update internal variables
+	def updateParameters(self, featureVector, click):
+		self.A += np.outer(featureVector, featureVector)
+		self.b += featureVector*click
+		self.A_inv = np.linalg.inv(self.A)
 
-	def updateInv(self):
-		self.A_inv = np.linalg.inv(self.A)		# update the inverse
+		self.theta = np.dot(self.A_inv, self.b)
 
-	def applyDecay(self, decay, duration):
-		self.DD *= (decay**duration)
-		self.b *= (decay**duration)
-
-	def decayAverage(self, decay, previousInsts, newInstance, current_time):
-		if current_time:
-			results = decay**(current_time - self.last_access_time) * previousInsts + newInstance
-			self.last_access_time = current_time
-			return results
-		return decay*previousInsts + newInstance
-
-	def updateA(self, featureVector, decay=None, current_time=None):
-		if decay:
-			assert decay <= 1 and decay >=0
-			self.DD = self.decayAverage(decay, self.DD, np.outer(featureVector, featureVector), current_time)
-			self.A = self.DD + self.identityMatrix
-		else:
-			self.A += np.outer(featureVector, featureVector)
-
-	def updateB(self, featureVector, click, decay=None, current_time=None):
-		if decay:
-			assert decay <= 1 and decay >= 0
-			self.b = self.decayAverage(decay, self.b, featureVector*click, current_time)
-		else:
-			self.b += featureVector*click
-
-	def updateMean(self, featureVector):
-
+	def getProb(self,featureVector):
 		self.mean = np.dot(self.theta, featureVector)
+		self.var =  np.sqrt(np.dot(np.dot(featureVector,self.A_inv ), featureVector))
+		self.pta = self.mean + self.alpha * self.var
 
-	def updateVar(self, featureVector):
-		self.var = np.sqrt(np.dot(np.dot(featureVector,self.A_inv), featureVector))
-
-	def updatePTA(self):
-		self.pta = self.mean + alpha * self.var
-
-	def getSpecialVar(self):
-		featureVector = np.ones(len(self.b)) / len(self.b)
-		return "{:0.3f}".format(np.sqrt(np.dot(np.dot(featureVector,self.A_inv), featureVector)))
-
-	def getMean(self):
-		return self.mean
 
 
 class Researt_LinStruct(LinUCBStruct):
-	def __init__(self):
-		LinUCBStruct.__init__(self, d, tim = None)
+	def __init__(self, d, articleID, alpha, tim = None):
+		LinUCBStruct.__init__(self, d =d , articleID = articleID, alpha =alpha, tim = tim)
 		self.counter = 0
 		self.intervalNum = 0
 
-
-# this is for without context UCB. This is not used in this code. for future implementations
-class UCBStruct:								
-	def __init__(self):
-		self.learn_stats = articleAccess()
-		self.deploy_stats = articleAccess()
-		self.confInter = 0.0
-
-	def updateConfInter(self, alpha):
-		self.confInter = alpha * 1/np.sqrt(self.learn_stats.clicks)
-
-# this structure saves for the e-greedy algorithm
-class GreedyStruct:
-	def __init__(self):
-		self.learn_stats = articleAccess()
-		self.deploy_stats = articleAccess()
+class Decay_LinStruct(LinUCBStruct):
+	def __init__(self, d, articleID, alpha, belta, tim = None):
+		LinUCBStruct.__init__(self, d =d , articleID = articleID, alpha =alpha, tim = tim)
+		self.belta = belta
+		self.last_access_time = tim
+	def updateParameters(self, featureVector, click):
+		pass
 
 # This code simply reads one line from the source files of Yahoo!. Please see the yahoo info file to understand the format. I tested this part; so should be good but second pair of eyes could help
 def parseLine(line):
@@ -230,33 +189,27 @@ if __name__ == '__main__':
 		else:
 			randomLearnCTR = randomC *1.0 / randomLA 
 		
-		UCBLA = cumAccess(articles_ReStartLinUCB, learn=True) 
-		UCBC = cumClicks(articles_ReStartLinUCB, learn=True)
-		if UCBLA == 0:
-			UCBLearnCTR = 0.0
+		Restart_LinUCBLA = cumAccess(articles_ReStartLinUCB, learn=True) 
+		Restart_LinUCBC = cumClicks(articles_ReStartLinUCB, learn=True)
+		if Restart_LinUCBLA == 0:
+			Restart_LinUCBLearnCTR = 0.0
 		else:
-			UCBLearnCTR = UCBC * 1.0 / UCBLA 
-		
-		greedyLA = cumAccess(articles_greedy, learn=True)
-		greedyC = cumClicks(articles_greedy, learn=True)
-		if greedyLA == 0:
-			greedyLearnCTR = 0.0
+			Restart_LinUCBLearnCTR = Restart_LinUCBC * 1.0 / Restart_LinUCBLA 
+
+		LinUCBLA = cumAccess(articles_LinUCB, learn=True) 
+		LinUCBC = cumClicks(articles_LinUCB, learn=True)
+		if LinUCBLA == 0:
+			LinUCBLearnCTR = 0.0
 		else:
-			greedyLearnCTR = greedyC *1.0/ greedyLA
+			LinUCBLearnCTR = LinUCBC * 1.0 / LinUCBLA 
 		
+			
 		print totalObservations, len(epochSelectedArticles),
-		print 'UCBLrn', UCBLearnCTR,
-		print 'GreedLrn', greedyLearnCTR,
-		if p_learn < 1:
-			randomDeployCTR = calculateCTRfromDict(articles_random, learn=False) 
-			UCBDeployCTR = calculateCTRfromDict(articles_ReStartLinUCB, learn=False) 
-			greedyDeployCTR = calculateCTRfromDict(articles_greedy, learn=False) 	
+		print 'Restart_LinUCBLrn', Restart_LinUCBLearnCTR,
+		print 'LinUCB', LinUCBLearnCTR
+		
 
-			print 'UCBDep', UCBDeployCTR / randomDeployCTR,
-			print 'GreedDep', greedyDeployCTR / randomDeployCTR,
-		print ' '
-
-		recordedStats = [ UCBLA, UCBC, randomLA, randomC, greedyLA, greedyC]
+		recordedStats = [ Restart_LinUCBLA, Restart_LinUCBC, randomLA, randomC, LinUCBLA, LinUCBC]
 		# write to file
 		save_to_file(fileNameWrite, articles_ReStartLinUCB, recordedStats, epochArticles, epochSelectedArticles, tim)
 
@@ -265,12 +218,26 @@ if __name__ == '__main__':
 		for x in articles_ReStartLinUCB:
 			articles_ReStartLinUCB[x].reInitilize()
 
+	def doublingRestart():
+		for x in articles_ReStartLinUCB:
+			articles_ReStartLinUCB[x].counter +=1
+			if articles_ReStartLinUCB[x].counter >= 10000  and articles_ReStartLinUCB[x].counter == 10000*(2**(articles_ReStartLinUCB[x].intervalNum)):
+				articles_ReStartLinUCB[x].reInitilize()
+				articles_ReStartLinUCB[x].intervalNum +=1
+				print 'reInitilize', str(x)
+	def LinearRestart():
+		for x in articles_ReStartLinUCB:
+                        articles_ReStartLinUCB[x].counter +=1
+                        if articles_ReStartLinUCB[x].counter >=1000000 and articles_ReStartLinUCB[x].counter == 1000000 *(1+ articles_ReStartLinUCB[x].intervalNum):
+                                articles_ReStartLinUCB[x].reInitilize()
+                                articles_ReStartLinUCB[x].intervalNum +=1
+                                print 'Linear ReInitilize', str(x)
 
-	modes = {0:'multiple', 1:'single', 2:'hours'} 	# the possible modes that this code can be run in; 'multiple' means multiple days or all days so theta dont change; single means it is reset every day; hours is reset after some hours depending on the reInitPerDay. 
-	mode = 'multiple' 									# the selected mode
-	fileSig = 'multiple'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
+        modes = {0:'multiple', 1:'single', 2:'hours'} 	# the possible modes that this code can be run in; 'multiple' means multiple days or all days so theta dont change; single means it is reset every day; hours is reset after some hours depending on the reInitPerDay. 
+	mode = 'single' 									# the selected mode
+	fileSig = 'singleDay'								# depending on further environment parameters a file signature to remember those. for example if theta is set every two hours i can have it '2hours'; for 
 	reInitPerDay = 6								# how many times theta is re-initialized per day
-	batchSize = 500								# size of one batch
+	batchSize = 1000								# size of one batch
 	testEnviornment = False
 
 	decay = 1
@@ -298,7 +265,8 @@ if __name__ == '__main__':
 
 	# respective dictionaries for algorithms
 	articles_ReStartLinUCB = {} 
-	articles_greedy = {}
+	articles_DecayLinUCB = {}
+	articles_LinUCB = {}
 	articles_random = {}
 
 
@@ -314,7 +282,7 @@ if __name__ == '__main__':
 	resetInterval = 0 		# initialize; value assigned later; determined when 
 	timeRun = datetime.datetime.now().strftime('_%m_%d_%H_%M') 	# the current data time
 	last_time = 0
-	dataDays = ['03', '04', '05', '06', '07', '08', '09', '10'] # the files from Yahoo that the algorithms will be run on; these files are indexed by days starting from May 1, 2009. this array starts from day 3 as also in the test data in the paper
+	dataDays = ['03','04','05','06', '07', '08', '09', '10'] # the files from Yahoo that the algorithms will be run on; these files are indexed by days starting from May 1, 2009. this array starts from day 3 as also in the test data in the paper
 	
 	if testEnviornment:
 		dataDays = ['01']
@@ -335,6 +303,8 @@ if __name__ == '__main__':
 		if mode == 'single':
 			fileNameWrite = os.path.join(save_address, fileSig + dataDay + timeRun + '.csv')
 			re_initialize_article_Structs()
+                        						                     
+			#re_initializeLinUCB()
 
 			countNoArticle = 0
 
@@ -352,7 +322,7 @@ if __name__ == '__main__':
 			f.write('\nNew Run at  ' + datetime.datetime.now().strftime('%m/%d/%Y %H:%M:%S'))
 
 			# format style, '()' means that it is repeated for each article
-			f.write('\n, Time,UCBLearnAccesses;UCBClicks;randomLearnAccesses;randomClicks;greedyLearnAccesses;greedyClicks,(varOfClusterUsers Article_Access Clicks ID Theta),(ID;epochArticles),(ID;epochSelectedArticles)\n')
+			f.write('\n, Time,Restart_LinUCBLearnAccesses;Restart_LinUCBClicks;randomLearnAccesses;randomClicks;LinUCBLearnAccesses;LinUCBClicks,(varOfClusterUsers Article_Access Clicks ID Theta),(ID;epochArticles),(ID;epochSelectedArticles)\n')
 
 		print fileName, fileNameWrite, dataDay, resetInterval
 		timcount = 0
@@ -371,6 +341,7 @@ if __name__ == '__main__':
 					# re-initialize
 					countLine = 0
 					re_initialize_article_Structs()
+                                        #doublingRestart() 
 					printWrite()
 					batchStartTime = tim
 					epochArticles = {}
@@ -382,18 +353,9 @@ if __name__ == '__main__':
 
 				# read the observation
 				tim, article_chosen, click, user_features, pool_articles = parseLine(line)
-				# if tim != last_time:
-				# 	# if tim>last_time:
-				# 	timcount +=1
-				# 	applyDecayToAll(articles_ReStartLinUCB, decay, tim - last_time)
-				# last_time = tim
-
-				# article ids for articles in the current pool for this observation
+			
 				currentArticles = []
 				for article in pool_articles:
-					# featureVector = np.concatenate((user_features[:-1], article[1:-1]), axis = 0)
-
-					# exclude 1 from feature vectors
 					featureVector = user_features[:-1]
 					# if there is a problem with the feature vector, skip this observation
 					if len(featureVector) is not d:
@@ -403,10 +365,20 @@ if __name__ == '__main__':
 					article_id = article[0]
 					currentArticles.append(article_id)
 					if article_id not in articles_ReStartLinUCB: #if its a new article; add it to dictionaries
-						articles_ReStartLinUCB[article_id] = LinUCBStructReseart_LinStruct(d, tim)
-						articles_greedy[article_id] = GreedyStruct()
+						articles_ReStartLinUCB[article_id] = Researt_LinStruct(d, article_id, alpha, tim)
+						articles_LinUCB[article_id] = LinUCBStruct(d,article_id,alpha,tim)
 						articles_random[article_id] = randomStruct()
-						
+                                        #Doubling restart
+                                        #doublingRestart()
+                                        #LinearRestart
+                                        #LinearRestart()
+
+                                        articles_LinUCB[article_id].getProb(featureVector)
+					articles_ReStartLinUCB[article_id].getProb(featureVector)
+
+					# Doubling restart
+					#doublingRestart()
+                                        
 
 					if article_id not in epochArticles:
 						epochArticles[article_id] = 1
@@ -414,12 +386,6 @@ if __name__ == '__main__':
 						# we also count the times article appeared in selection pool in this batch
 						epochArticles[article_id] = epochArticles[article_id] + 1
 
-					
-					# Calculate LinUCB confidence bound; done in three steps for readability
-					# please check this code for correctness
-					articles_ReStartLinUCB[article_id].mean = np.dot(articles_ReStartLinUCB[article_id].theta, featureVector)
-					articles_ReStartLinUCB[article_id].var = np.sqrt(np.dot(np.dot(featureVector,articles_ReStartLinUCB[article_id].A_inv), featureVector))
-					articles_ReStartLinUCB[article_id].pta = articles_ReStartLinUCB[article_id].mean + alpha * articles_ReStartLinUCB[article_id].var
 					#Decay environment
 					#articles_ReStartLinUCB[article_id].pta = articles_ReStartLinUCB[article_id].mean + alpha * (decay**effectiveObservations)*articles_ReStartLinUCB[article_id].var
 
@@ -429,15 +395,14 @@ if __name__ == '__main__':
 					epochSelectedArticles[article_chosen] = epochSelectedArticles[article_chosen] + 1					
 					# if articles_ReStartLinUCB[article_id].pta < 0: print 'PTA', articles_ReStartLinUCB[article_id].pta,
 
+				# articles picked by Restart_LinUCB
+				Restart_LinUCBArticle = max(np.random.permutation([(x, articles_ReStartLinUCB[x].pta) for x in currentArticles]), key=itemgetter(1))[0]
+
 				# articles picked by LinUCB
-				ucbArticle = max(np.random.permutation([(x, articles_ReStartLinUCB[x].pta) for x in currentArticles]), key=itemgetter(1))[0]
+				LinUCBArticle = max(np.random.permutation([(x, articles_LinUCB[x].pta) for x in currentArticles]), key=itemgetter(1))[0]
 
 				# article picked by random strategy
 				randomArticle = choice(currentArticles)
-
-				# article picked by greedy
-				greedyArticle = max([(x, articles_greedy[x].learn_stats.CTR) for x in currentArticles], key = itemgetter(1))[0]
-				if random() < eta: greedyArticle = choice(currentArticles)
 
 				learn = random()<p_learn # decide the learning or deployment bucket
 
@@ -448,35 +413,23 @@ if __name__ == '__main__':
 					else:
 						articles_random[randomArticle].deploy_stats.addrecord(click)
 
-				# if LinUCB article is the chosen by evaluation strategy; update datastructure with results
-				if ucbArticle==article_chosen:
-					effectiveObservations += 1
-					#update all existing articles' counter
-					for x in articles_ReStartLinUCB:
-						articles_ReStartLinUCB[x].counter +=1
-						if articles_ReStartLinUCB[x].counter == 2**(articles_ReStartLinUCB[x].intervalNum):
-							articles_ReStartLinUCB[x].reInitilize()
-							articles_ReStartLinUCB[x].intervalNum +=1
-							print 'reInitilize', str(x)
-
+				# if Restart_LinUCB article is the chosen by evaluation strategy; update datastructure with results
+				if Restart_LinUCBArticle ==article_chosen:
 					if learn: # if learning bucket then use the observation to update the parameters
 						articles_ReStartLinUCB[article_chosen].learn_stats.addrecord(click)
+						articles_ReStartLinUCB[article_chosen].updateParameters(featureVector, click)
 
-						articles_ReStartLinUCB[article_chosen].updateA(featureVector)
-						articles_ReStartLinUCB[article_chosen].updateB(featureVector, click)
-
-						articles_ReStartLinUCB[article_chosen].updateInv()
-						articles_ReStartLinUCB[article_chosen].updateTheta()
 					else:
 						articles_ReStartLinUCB[article_chosen].deploy_stats.addrecord(click)
 
-				# if greedy article is chosen by evalution strategy
-				if greedyArticle == article_chosen:
-					if learn:
-						articles_greedy[article_chosen].learn_stats.addrecord(click)
-						articles_greedy[article_chosen].learn_stats.updateCTR()
+				# if LinUCB article is the chosen by evaluation strategy; update datastructure with results
+				if LinUCBArticle ==article_chosen:
+					
+					if learn: # if learning bucket then use the observation to update the parameters
+						articles_LinUCB[article_chosen].learn_stats.addrecord(click)
+						articles_LinUCB[article_chosen].updateParameters(featureVector, click)
 					else:
-						articles_greedy[article_chosen].deploy_stats.addrecord(click)
+						articles_LinUCB[article_chosen].deploy_stats.addrecord(click)
 						
 					
 				# if the batch has ended 
@@ -484,9 +437,7 @@ if __name__ == '__main__':
 
 					# write observations for this batch
 					printWrite()
-					
-					
-
+				
 					batchStartTime = tim
 					epochArticles = {}
 					epochSelectedArticles = {}
